@@ -1,0 +1,7 @@
+version: v2
+modules:
+  - name: connect-rs/connect-rs/example
+    path: ./example/proto
+breaking:
+  use:
+    - FILE

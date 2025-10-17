@@ -1,33 +1,34 @@
-use prost::Message;
-
-#[path = "../generated/greet.v1.rs"]
+#[path = "../generated/greet.v1.connect.rs"]
 mod greet_v1;
 
-use greet_v1::{GreetRequest, GreetResponse};
+use axum::http::{HeaderMap, HeaderName, HeaderValue};
+use greet_v1::{GetUserRequest, GreetServiceClient};
+use reqwest::Client;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let request = GreetRequest {
-        name: "world".to_string(),
+    let client = Client::builder()
+        .default_headers(HeaderMap::from_iter([(
+            HeaderName::from_static("token"),
+            HeaderValue::from_static("opensesame"),
+        )]))
+        .build()?;
+
+    let client = GreetServiceClient::with_client("http://localhost:3000", client);
+
+    println!("=== Using generated client ===");
+    let get_user_request = GetUserRequest {
+        name: "this will end up as the user ID".to_string(),
     };
 
-    let mut body = Vec::new();
-    request.encode(&mut body)?;
+    let get_user_response = client
+        .get_user(get_user_request)
+        .await
+        .expect("response error");
 
-    let client = reqwest::Client::new();
-    let response = client
-        .post("http://localhost:3000/greet.v1.GreetService/GreetMany")
-        .header("Content-Type", "application/connect+proto")
-        .body(body)
-        .send()
-        .await?;
-
-    println!("Status: {}", response.status());
-
-    let response_bytes = response.bytes().await?;
-    let greet_response = GreetResponse::decode(&response_bytes[..])?;
-
-    println!("Response: {}", greet_response.greeting);
+    if let Some(user) = get_user_response.user {
+        println!(r#"(id: "{}", email: "{}")"#, user.id, user.email);
+    }
 
     Ok(())
 }

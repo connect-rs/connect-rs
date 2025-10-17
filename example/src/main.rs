@@ -1,15 +1,25 @@
-use connect_axum::connect_impl;
-use generated::greet::v1::{GreetManyRequest, GreetManyResponse};
+use axum::{
+    Json,
+    extract::Request,
+    middleware::{self, Next},
+    response::Response,
+};
+use connect_axum::connect_rs_impl;
 
-mod generated;
+mod greet {
+    pub mod v1 {
+        include!("generated/greet.v1.connect.rs");
+    }
+}
 
-use crate::generated::greet;
-
-use crate::generated::greet::v1::{GreetRequest, GreetResponse, GreetService};
+use greet::v1::*;
+use reqwest::StatusCode;
+use serde_json::json;
+use tokio::net::TcpListener;
 
 struct MyGreetService;
 
-#[connect_impl(greet::v1::GreetService)]
+#[connect_rs_impl(greet::v1::GreetService)]
 impl MyGreetService {
     async fn greet(
         &self,
@@ -20,13 +30,33 @@ impl MyGreetService {
         })
     }
 
-    async fn greet_many(
+    async fn get_user(
         &self,
-        request: GreetManyRequest,
-    ) -> Result<GreetManyResponse, connect_axum::ConnectError> {
-        Ok(GreetManyResponse {
-            greeting: format!("Hello to all of you, {}!", request.name),
+        request: GetUserRequest,
+    ) -> Result<GetUserResponse, connect_axum::ConnectError> {
+        let name = request.name;
+
+        Ok(GetUserResponse {
+            user: Some(User {
+                id: name,
+                email: "me@justme.com".to_string(),
+                profile: None,
+            }),
         })
+    }
+}
+
+const TOKEN_HEADER: &str = "token";
+
+// Basic token-based auth to demonstrate interceptors
+async fn auth_interceptor(req: Request, next: Next) -> Result<Response, StatusCode> {
+    if let Some(token) = req.headers().get(TOKEN_HEADER)
+        && token == "opensesame"
+    {
+        let response = next.run(req).await;
+        Ok(response)
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
     }
 }
 
@@ -34,14 +64,15 @@ impl MyGreetService {
 async fn main() {
     let service = MyGreetService;
 
-    // The macro generates the into_router() method
     let app = service
         .into_router()
-        .route("/health", axum::routing::get(|| async { "OK" }));
+        .layer(middleware::from_fn(auth_interceptor))
+        .route(
+            "/health",
+            axum::routing::get(|| async { Json(json!({ "ok": true })) }),
+        );
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
-        .await
-        .unwrap();
+    let listener = TcpListener::bind("127.0.0.1:3000").await.unwrap();
 
     println!("Server listening on http://127.0.0.1:3000");
 

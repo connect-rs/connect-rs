@@ -1,48 +1,44 @@
-// connect-axum/src/lib.rs
-
-pub mod extract;
+pub mod encode;
 pub mod message;
-pub mod response;
+pub mod parse;
 
-pub use extract::extract_connect_request;
-pub use response::{build_connect_response, build_error_response};
+pub use encode::encode_http_response;
+pub use parse::parse_connect_request;
 
-pub use connect_axum_macros::connect_impl;
+pub use connect_axum_macros::connect_rs_impl;
 
-#[derive(Debug)]
+const CONNECT_PROTOCOL_VERSION: &str = "connect-protocol-version";
+const CONNECT_TIMEOUT_MS: &str = "connect-timeout-ms";
+
+const APPLICATION_CONNECT_JSON: &str = "application/connect+json";
+const APPLICATION_CONNECT_PROTO: &str = "application/connect+proto";
+const APPLICATION_PROTO: &str = "application/proto";
+
 pub struct ConnectRequest {
     pub message: Vec<u8>,
     pub encoding: Encoding,
-    pub method: Method,
     pub timeout_ms: Option<u64>,
     pub protocol_version: Option<String>,
 }
 
-#[derive(Debug)]
 pub struct ConnectResponse {
     pub message: Vec<u8>,
     pub encoding: Encoding,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone)]
 pub enum Encoding {
     Json,
     Proto,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Method {
-    Get,
-    Post,
-}
-
 #[derive(Debug)]
 pub struct ConnectError {
-    pub code: Code,
-    pub message: String,
-    pub details: Vec<ErrorDetail>,
+    code: Code,
+    message: String,
 }
 
+// https://connectrpc.com/docs/protocol/#error-codes
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Code {
     Canceled,
@@ -63,18 +59,11 @@ pub enum Code {
     Unauthenticated,
 }
 
-#[derive(Debug, Clone)]
-pub struct ErrorDetail {
-    pub type_url: String,
-    pub value: Vec<u8>,
-}
-
 impl ConnectError {
     pub fn new(code: Code, message: impl Into<String>) -> Self {
         Self {
             code,
             message: message.into(),
-            details: Vec::new(),
         }
     }
 
@@ -86,22 +75,19 @@ impl ConnectError {
         Self::new(Code::InvalidArgument, message)
     }
 
-    pub fn not_found(message: impl Into<String>) -> Self {
-        Self::new(Code::NotFound, message)
-    }
-
-    pub fn unimplemented(message: impl Into<String>) -> Self {
-        Self::new(Code::Unimplemented, message)
-    }
+    // TODO: other constructors
 }
 
-pub trait ConnectMessage: Send + Sync + 'static {
-    fn encode_json(&self) -> Result<Vec<u8>, ConnectError>;
+pub trait ConnectMessageProto: Send + Sync + 'static {
     fn encode_proto(&self) -> Result<Vec<u8>, ConnectError>;
-    fn decode_json(bytes: &[u8]) -> Result<Self, ConnectError>
+    fn decode_proto(bytes: &[u8]) -> Result<Self, ConnectError>
     where
         Self: Sized;
-    fn decode_proto(bytes: &[u8]) -> Result<Self, ConnectError>
+}
+
+pub trait ConnectMessageJson: Send + Sync + 'static {
+    fn encode_json(&self) -> Result<Vec<u8>, ConnectError>;
+    fn decode_json(bytes: &[u8]) -> Result<Self, ConnectError>
     where
         Self: Sized;
 }

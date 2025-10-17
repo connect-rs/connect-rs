@@ -2,25 +2,14 @@ syntax = "proto3";
 
 package greet.v1;
 
-// A greeting request
 message GreetRequest {
   string name = 1;
 }
 
-message GreetManyRequest {
-  string name = 1;
-}
-
-// A greeting response
 message GreetResponse {
   string greeting = 1;
 }
 
-message GreetManyResponse {
-  string greeting = 1;
-}
-
-// A more complex message with nested types
 message User {
   string id = 1;
   string email = 2;
@@ -32,8 +21,20 @@ message User {
   }
 }
 
-// The greeting service
+message GetUserRequest {
+  string name = 1;
+}
+
+message GetUserResponse {
+  User user = 1;
+}
+
 service GreetService {
-  rpc Greet(GreetRequest) returns (GreetResponse);
-  rpc GreetMany(stream GreetManyRequest) returns (stream GreetManyResponse);
+  rpc Greet(GreetRequest) returns (GreetResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+
+  rpc GetUser(GetUserRequest) returns (GetUserResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
 }

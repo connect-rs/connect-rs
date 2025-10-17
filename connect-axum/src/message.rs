@@ -1,30 +1,32 @@
 use crate::ConnectError;
 use prost::Message;
+use serde::{Serialize, de::DeserializeOwned};
 
-impl<T> crate::ConnectMessage for T
+impl<T> crate::ConnectMessageProto for T
 where
     T: Message + Default + Send + Sync + 'static,
 {
-    fn encode_json(&self) -> Result<Vec<u8>, ConnectError> {
-        // For now, return unimplemented
-        // We'll add proper JSON support later with prost-reflect working
-        Err(ConnectError::unimplemented(
-            "JSON encoding not yet implemented",
-        ))
-    }
-
     fn encode_proto(&self) -> Result<Vec<u8>, ConnectError> {
         Ok(self.encode_to_vec())
     }
 
-    fn decode_json(_bytes: &[u8]) -> Result<Self, ConnectError> {
-        Err(ConnectError::unimplemented(
-            "JSON decoding not yet implemented",
-        ))
-    }
-
     fn decode_proto(bytes: &[u8]) -> Result<Self, ConnectError> {
         T::decode(bytes)
-            .map_err(|e| ConnectError::invalid_argument(format!("Protobuf decode failed: {}", e)))
+            .map_err(|e| ConnectError::invalid_argument(format!("Protobuf decode failed: {e}")))
+    }
+}
+
+impl<T> crate::ConnectMessageJson for T
+where
+    T: Message + Default + Serialize + DeserializeOwned + Send + Sync + 'static,
+{
+    fn encode_json(&self) -> Result<Vec<u8>, ConnectError> {
+        serde_json::to_vec(self)
+            .map_err(|e| ConnectError::internal(format!("JSON encode failed: {e}")))
+    }
+
+    fn decode_json(bytes: &[u8]) -> Result<Self, ConnectError> {
+        serde_json::from_slice(bytes)
+            .map_err(|e| ConnectError::invalid_argument(format!("Invalid JSON: {e}")))
     }
 }

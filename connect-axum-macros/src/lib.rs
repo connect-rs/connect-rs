@@ -1,41 +1,67 @@
+use heck::{ToPascalCase, ToSnakeCase};
 use proc_macro::TokenStream;
+use proc_macro_error::{abort, proc_macro_error};
 use quote::quote;
-use syn::{ItemImpl, Path, parse_macro_input};
+use syn::{ItemImpl, Path, parse_macro_input, spanned::Spanned};
 
-struct ConnectImplArgs {
-    trait_path: Path,
-}
-
-impl syn::parse::Parse for ConnectImplArgs {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let trait_path = input.parse()?;
-        Ok(ConnectImplArgs { trait_path })
-    }
-}
-
-/// Macro that implements a Connect service trait and generates axum routes
-///
-/// Usage: #[connect_impl(path::to::ServiceTrait)]
+/// Example: #[connect_rs_impl(v1::auth::AuthService)]
+#[proc_macro_error]
 #[proc_macro_attribute]
-pub fn connect_impl(args: TokenStream, input: TokenStream) -> TokenStream {
-    let args = parse_macro_input!(args as ConnectImplArgs);
+pub fn connect_rs_impl(args: TokenStream, input: TokenStream) -> TokenStream {
+    let trait_path = parse_macro_input!(args as Path);
     let input = parse_macro_input!(input as ItemImpl);
 
-    let trait_path = &args.trait_path;
-    let self_ty = &input.self_ty;
-    let impl_generics = &input.generics;
-    let methods = &input.items;
+    let self_ty = &input.self_ty; // Self type
+    let impl_generics = &input.generics; // Generics, like <A + B + C>
+    let items = &input.items; // Things like fn, const, type, macro
+
+    // Extract the service name from the trait path
+    let service_name = if let Some(last) = trait_path.segments.last() {
+        last.ident.to_string()
+    } else {
+        abort!(
+            trait_path,
+            "Invalid service name";
+            help = "Expected format: package::v1::ServiceName"
+        );
+    };
+
+    // Build the path to the metadata module
+    // For trait path like `auth::v1::AuthService`, metadata is at `auth::v1::__auth_service_meta`
+    let meta_module_name = format!("__{}_meta", service_name.to_snake_case());
+    let meta_module_ident = syn::Ident::new(&meta_module_name, trait_path.span());
+
+    // Build the full path to the metadata module by taking all segments except the last (service name)
+    // and appending the metadata module name
+    let parent_segments: Vec<_> = trait_path
+        .segments
+        .iter()
+        .take(trait_path.segments.len().saturating_sub(1))
+        .collect();
+
+    let meta_path = if parent_segments.is_empty() {
+        // If no parent modules, just use the meta module name
+        quote! { #meta_module_ident }
+    } else {
+        // Build path like auth::v1::__auth_service_meta
+        quote! { #(#parent_segments)::* :: #meta_module_ident }
+    };
 
     // Extract method names and signatures
     let mut method_impls = Vec::new();
     let mut route_handlers = Vec::new();
     let mut route_registrations = Vec::new();
 
-    for item in methods {
+    for item in items {
         if let syn::ImplItem::Fn(method) = item {
             let method_name = &method.sig.ident;
             let method_name_str = method_name.to_string();
-            let method_name_pascal = to_pascal_case(&method_name_str);
+
+            // Convert snake_case to PascalCase then uppercase to match protoc constant
+            // get_user -> GetUser -> GETUSER
+            let pascal_case = method_name_str.to_pascal_case();
+            let method_name_upper = pascal_case.to_uppercase();
+            let method_const_ident = syn::Ident::new(&method_name_upper, method_name.span());
 
             // Extract request and response types from the method signature
             // Expected: async fn method_name(&self, request: RequestType) -> Result<ResponseType, ConnectError>
@@ -47,17 +73,13 @@ pub fn connect_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                 if let syn::FnArg::Typed(pat_type) = &inputs[1] {
                     &pat_type.ty
                 } else {
-                    return syn::Error::new_spanned(inputs, "Expected typed parameter for request")
-                        .to_compile_error()
-                        .into();
+                    abort!(inputs, "Expected typed parameter for request");
                 }
             } else {
-                return syn::Error::new_spanned(
+                abort!(
                     inputs,
-                    "Expected method signature: async fn method(&self, request: RequestType)",
-                )
-                .to_compile_error()
-                .into();
+                    "Expected method signature: async fn method(&self, request: RequestType)"
+                );
             };
 
             // Get the response type from Result<ResponseType, _>
@@ -74,44 +96,26 @@ pub fn connect_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                                     {
                                         resp_ty
                                     } else {
-                                        return syn::Error::new_spanned(
+                                        abort!(
                                             output,
-                                            "Expected Result<ResponseType, ConnectError>",
-                                        )
-                                        .to_compile_error()
-                                        .into();
+                                            "Expected Result<ResponseType, ConnectError>"
+                                        );
                                     }
                                 } else {
-                                    return syn::Error::new_spanned(
-                                        output,
-                                        "Expected Result<ResponseType, ConnectError>",
-                                    )
-                                    .to_compile_error()
-                                    .into();
+                                    abort!(output, "Expected Result<ResponseType, ConnectError>");
                                 }
                             } else {
-                                return syn::Error::new_spanned(
-                                    output,
-                                    "Expected Result return type",
-                                )
-                                .to_compile_error()
-                                .into();
+                                abort!(output, "Expected Result return type");
                             }
                         } else {
-                            return syn::Error::new_spanned(output, "Expected Result return type")
-                                .to_compile_error()
-                                .into();
+                            abort!(output, "Expected Result return type");
                         }
                     } else {
-                        return syn::Error::new_spanned(output, "Expected Result return type")
-                            .to_compile_error()
-                            .into();
+                        abort!(output, "Expected Result return type");
                     }
                 }
                 _ => {
-                    return syn::Error::new_spanned(output, "Expected Result return type")
-                        .to_compile_error()
-                        .into();
+                    abort!(output, "Expected Result return type");
                 }
             };
 
@@ -126,7 +130,7 @@ pub fn connect_impl(args: TokenStream, input: TokenStream) -> TokenStream {
 
             // Generate the route handler
             let handler_name = syn::Ident::new(
-                &format!("__connect_handler_{}", method_name),
+                &format!("__connect_handler_{method_name}"),
                 method_name.span(),
             );
 
@@ -135,18 +139,18 @@ pub fn connect_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                     axum::extract::State(service): axum::extract::State<std::sync::Arc<#self_ty>>,
                     req: axum::extract::Request,
                 ) -> Result<axum::response::Response, connect_axum::ConnectError> {
-                    use connect_axum::ConnectMessage;
+                    use connect_axum::{ConnectMessageJson, ConnectMessageProto};
 
-                    // Parse the Connect request
-                    let connect_req = connect_axum::extract_connect_request(req).await?;
+                    // Parse the incoming Connect request
+                    let connect_req = connect_axum::parse_connect_request(req).await?;
 
                     // Decode the request message
                     let request_msg = match connect_req.encoding {
                         connect_axum::Encoding::Json => {
-                            <#request_type as ConnectMessage>::decode_json(&connect_req.message)?
+                            <#request_type as ConnectMessageJson>::decode_json(&connect_req.message)?
                         }
                         connect_axum::Encoding::Proto => {
-                            <#request_type as ConnectMessage>::decode_proto(&connect_req.message)?
+                            <#request_type as ConnectMessageProto>::decode_proto(&connect_req.message)?
                         }
                     };
 
@@ -156,54 +160,48 @@ pub fn connect_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                     // Encode the response
                     let response_bytes = match connect_req.encoding {
                         connect_axum::Encoding::Json => {
-                            <#response_type as ConnectMessage>::encode_json(&response_msg)?
+                            <#response_type as ConnectMessageJson>::encode_json(&response_msg)?
                         }
                         connect_axum::Encoding::Proto => {
-                            <#response_type as ConnectMessage>::encode_proto(&response_msg)?
+                            <#response_type as ConnectMessageProto>::encode_proto(&response_msg)?
                         }
                     };
 
-                    // Build the HTTP response
-                    connect_axum::build_connect_response(response_bytes, connect_req.encoding)
+                    // The final HTTP response
+                    connect_axum::encode_http_response(response_bytes, connect_req.encoding)
                 }
             });
 
-            // Generate route registration
-            // Get the service name from the trait path (last segment)
-            let service_name = if let Some(last) = trait_path.segments.last() {
-                last.ident.to_string()
-            } else {
-                "UnknownService".to_string()
-            };
-
-            // Construct the full path
-            // TODO: Get package from metadata instead of hardcoding
-            let route_path = format!("/greet.v1.{}/{}", service_name, method_name_pascal);
-
+            // For idempotent methods, use GET only
+            // For non-idempotent methods, use both POST and GET
             route_registrations.push(quote! {
-                .route(#route_path, post(#handler_name).get(#handler_name))
+                .route(
+                    #meta_path::#method_const_ident.path,
+                    if #meta_path::#method_const_ident.idempotent {
+                        axum::routing::method_routing::MethodRouter::new()
+                            .get(#handler_name)
+                            .post(#handler_name)
+                    } else {
+                        axum::routing::post(#handler_name)
+                    }
+                )
             });
         }
     }
 
-    // Generate the output
     let expanded = quote! {
-        // Original impl block for the trait
         impl #impl_generics #trait_path for #self_ty {
             #(#method_impls)*
         }
 
-        // Additional impl block with router generation
         impl #impl_generics #self_ty {
             pub fn into_router(self) -> axum::Router {
                 use axum::routing::{post, get};
 
                 let service = std::sync::Arc::new(self);
 
-                // Generate the handler functions in scope
                 #(#route_handlers)*
 
-                // Build router with all routes
                 axum::Router::new()
                     #(#route_registrations)*
                     .with_state(service)
@@ -212,17 +210,4 @@ pub fn connect_impl(args: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(expanded)
-}
-
-/// Convert snake_case to PascalCase
-fn to_pascal_case(s: &str) -> String {
-    s.split('_')
-        .map(|word| {
-            let mut chars = word.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(first) => first.to_uppercase().chain(chars).collect(),
-            }
-        })
-        .collect()
 }
