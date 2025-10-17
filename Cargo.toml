@@ -1,0 +1,13 @@
+[workspace]
+members = [
+  "connect-axum",
+  "connect-axum-macros",
+  "protoc-gen-connect-rust",
+  "example",
+]
+resolver = "2"
+
+[workspace.dependencies]
+prost = { version = "0.14.1" }
+prost-reflect = { version = "0.16.2", features = ["serde"] }
+prost-types = { version = "0.14.1" }
