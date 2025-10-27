@@ -9,7 +9,7 @@ use std::io::{self, Read, Write};
 
 const PKG: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-const NO_SIDE_EFFECTS: i32 = 1; // https://protobuf.dev/reference/cpp/api-docs/google.protobuf.descriptor.pb/
+const NO_SIDE_EFFECTS: i32 = 1; // https://protobuf.dev/reference/cpp/api-docs/google.protobuf.descriptor.pb
 
 fn main() -> io::Result<()> {
     let mut input = Vec::new();
@@ -96,7 +96,7 @@ fn generate_service(service: &ServiceDescriptorProto, package: &str) -> proc_mac
         .method
         .iter()
         .map(|method| {
-            let method_name = method.name.as_deref().unwrap_or("unknown");
+            let method_name = method.name.as_deref().unwrap_or("unknown"); // MAYBE: error if None
             let method_ident = format_ident!("{}", method_name.to_snake_case());
 
             let input_type = method.input_type.as_deref().unwrap_or("");
@@ -109,10 +109,7 @@ fn generate_service(service: &ServiceDescriptorProto, package: &str) -> proc_mac
             let output_ident = format_ident!("{}", output_type_rust);
 
             quote! {
-                fn #method_ident(
-                    &self,
-                    request: #input_ident
-                ) -> impl std::future::Future<Output = Result<#output_ident, connect_axum::ConnectError>> + Send;
+                async fn #method_ident(&self, request: #input_ident) -> Result<#output_ident, connect_axum::ConnectError>;
             }
         })
         .collect();
@@ -200,7 +197,9 @@ fn generate_service(service: &ServiceDescriptorProto, package: &str) -> proc_mac
         #[allow(unused)]
         #[doc = concat!("Generated service trait for ", #service_name)]
         pub trait #service_ident: Send + Sync + 'static {
-            #(#service_trait_methods)*
+            #(
+                #service_trait_methods
+            )*
         }
 
         #[allow(unused)]
