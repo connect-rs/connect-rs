@@ -4,9 +4,12 @@
 > This project is very much a work in progress.
 > It's in good enough shape to share with the world and withstand scrutiny, but don't use it in production scenarios just yet.
 
-An implementation of [Connect] for [Rust] using the [Axum] framework under the hood.
+An implementation of [**Connect**][connect] for [Rust] using the [Axum] framework under the hood.
+Connect is a simpler alternative to [gRPC] built on plain old HTTP rather than magical ✨ bits like HTTP trailers, making Connect-compatible servers immediately compatible with standard tools like [cURL] and the [Fetch API][fetch].
 
-With connect-rs, you can turn this [Protobuf]...
+## Example
+
+With connect-rs, you can turn this [Protobuf] for the classic TODOs service...
 
 ```proto
 syntax = "proto3";
@@ -99,8 +102,23 @@ cargo run --bin example
 cargo run --bin test_client
 ```
 
+## Install
+
+I haven't yet provided any downloadable artifacts, so the best way to install the code generator (`protoc-gen-connect-rs-axum`) is to add it to your current shell environment with Nix...
+
+```shell
+nix shell "https://flakehub.com/f/connect-rs/connect-rs/0#protoc-gen-connect-rs-axum"
+```
+
+...or build it yourself in the repo using [cargo].
+
+I'll create a real release process soon.
+
 [axum]: https://github.com/tokio-rs/axum
+[cargo]: https://doc.rust-lang.org/cargo
 [connect]: https://connectrpc.com
+[curl]: https://curl.se
+[fetch]: https://developer.mozilla.org//docs/Web/API/Fetch_API
 [grpc]: https://grpc.io
 [nix]: https://docs.determinate.systems
 [protobuf]: https://protobuf.dev
