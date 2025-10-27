@@ -1,5 +1,9 @@
 # connect-rs 🦀
 
+> [!WARNING]
+> This project is very much a work in progress.
+> It's in good enough shape to share with the world and withstand scrutiny, but don't use it in production scenarios just yet.
+
 An implementation of [Connect] for [Rust] using the [Axum] framework under the hood.
 
 With connect-rs, you can turn this [Protobuf]...
