@@ -1,7 +1,7 @@
 version: v2
 modules:
-  - name: connect-rs/connect-rs/example
-    path: ./example/proto
+  - name: connect-rs/connect-rs/todos-example
+    path: ./examples/todos/proto
 breaking:
   use:
     - FILE

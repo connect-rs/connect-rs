@@ -1,12 +1,103 @@
 # connect-rs 🦀
 
+An implementation of [Connect] for [Rust] using the [Axum] framework under the hood.
+
+With connect-rs, you can turn this [Protobuf]...
+
+```proto
+syntax = "proto3";
+
+package todos.v1;
+
+message Todo {
+  string id = 1;
+  string task = 2;
+  bool done = 3;
+}
+
+message GetTodoRequest {
+  string id = 1;
+}
+
+message GetTodoResponse {
+  Todo todo = 1;
+}
+
+service TodosService {
+  rpc GetTodo(GetTodoRequest) returns (GetTodoResponse) {}
+}
+```
+
+...into this implementation:
+
+```rust
+#[path = "./generated/todos.v1.connect.rs"]
+mod todos_v1;
+
+use tokio::net::TcpListener;
+
+use connect_axum::connect_rs_impl;
+
+use todos_v1::{GetTodoRequest, GetTodoResponse, Todo, TodosService};
+
+struct TodosServer;
+
+#[connect_rs_impl(todos_v1::TodosService)]
+impl TodosServer {
+    async fn get_todo(
+        &self,
+        req: GetTodoRequest,
+    ) -> Result<GetTodoResponse, connect_axum::ConnectError> {
+        Ok(GetTodoResponse {
+            todo: Some(Todo {
+                id: "get out of bed".to_string(),
+                task: "Set the alarm, obey it, and be productive from the get-go".to_string(),
+                done: false,
+            }),
+        })
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let app = TodosServer.into_router();
+
+    let listener = TcpListener::bind("127.0.0.1:3000").await.unwrap();
+
+    println!("Server listening on http://127.0.0.1:3000");
+
+    axum::serve(listener, app).await.unwrap();
+}
+```
+
+Pretty neat! 🚀
+Minimal boilerplate, virtually no HTTP plumbing, and no [gRPC] magic.
+Just plain old HTTP `POST`s (with the occasional `GET`).
+
+## Try it out
+
+To run the example in this repo, [install Nix][nix] and then:
+
 ```shell
+# Activate the development environment
 nix develop # direnv allow
 
+# Build the code generator
 cargo build --release --package protoc-gen-connect-rs-axum
 
+# Generate the necessary Rust files from Protobuf
 buf generate
 
-cargo run --bin example # server
-cargo run --bin test_client # client
+# Run the example server
+cargo run --bin example
+
+# Run the example client
+cargo run --bin test_client
 ```
+
+[axum]: https://github.com/tokio-rs/axum
+[connect]: https://connectrpc.com
+[grpc]: https://grpc.io
+[nix]: https://docs.determinate.systems
+[protobuf]: https://protobuf.dev
+[rust]: https://rust-lang.org

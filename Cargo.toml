@@ -3,7 +3,7 @@ members = [
   "connect-axum",
   "connect-axum-macros",
   "protoc-gen-connect-rs-axum",
-  "example",
+  "examples/todos",
 ]
 resolver = "2"
 

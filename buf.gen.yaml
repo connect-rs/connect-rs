@@ -4,9 +4,8 @@ clean: true
 
 plugins:
   - local: protoc-gen-prost
-    out: ./example/src/generated
+    out: ./examples/todos/src/generated
   - local: protoc-gen-prost-serde
-    out: ./example/src/generated
+    out: ./examples/todos/src/generated
   - local: ./target/release/protoc-gen-connect-rs-axum
-    #local: ./result/bin/protoc-gen-connect-rs-axum # nix
-    out: ./example/src/generated
+    out: ./examples/todos/src/generated
