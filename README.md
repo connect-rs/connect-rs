@@ -2,7 +2,7 @@
 
 > [!WARNING]
 > This project is very much a work in progress.
-> It's in good enough shape to share with the world and withstand scrutiny, but don't use it in production scenarios just yet.
+> It's in good enough shape to share with the world and receive input/scrutiny/pull requests, but definitely don't use it in production scenarios just yet.
 
 An implementation of [**Connect**][connect] for [Rust] using the [Axum] framework under the hood.
 Connect is a simpler alternative to [gRPC] built on plain old HTTP rather than magical ✨ bits like HTTP trailers, making Connect-compatible servers immediately compatible with standard tools like [cURL] and the [Fetch API][fetch].
